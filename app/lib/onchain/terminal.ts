@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import { formatEther, type AbiEvent, type Address } from "viem";
-import { dualClaimAbi } from "./abi";
+import { dualClaimAbi, wethAbi } from "./abi";
 import { CLAIM_ADDRESS } from "./addresses";
 
 /** One event-log row on the terminal. */
@@ -45,19 +45,6 @@ const EVENT_NAMES = [
   "ClaimExecuted",
   "WindowExtended",
   "TokenValueSet",
-] as const;
-
-const erc20AllowanceAbi = [
-  {
-    type: "function",
-    name: "allowance",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-  },
 ] as const;
 
 const events = dualClaimAbi.filter(
@@ -126,7 +113,7 @@ export function useTerminal() {
       // The WETH allowance the Safe granted the contract — the funding cap.
       const allowanceWei = await client!.readContract({
         address: token,
-        abi: erc20AllowanceAbi,
+        abi: wethAbi,
         functionName: "allowance",
         args: [treasury, CLAIM_ADDRESS],
       });

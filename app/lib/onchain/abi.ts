@@ -927,3 +927,44 @@ export const nftAbi = [
     anonymous: false,
   },
 ] as const;
+
+/**
+ * WETH — the redemption asset. `deposit` wraps the Safe's ETH; `approve` is
+ * the go-live switch (claims pull with transferFrom, capped at the allowance).
+ */
+export const wethAbi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "allowance",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "approve",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "deposit",
+    inputs: [],
+    outputs: [],
+    stateMutability: "payable",
+  },
+] as const;

@@ -110,7 +110,7 @@ Two independent halves: the contract on mainnet, and the Next.js app on a host. 
      --rpc-url $ETH_RPC_URL --broadcast --private-key $DEPLOYER_KEY --verify
    ```
    One broadcast deploys, seeds all values from `data/token-values.json`, and transfers ownership to `CLAIM_OWNER`. The redemption window is 1 month: set `CLAIM_CLOSES_AT` to now + 30 days (extendable later via `extendWindow`, never shortenable).
-3. The Safe funds the pool: wrap `totalSeeded()` into WETH (`deposit`), then `approve` the deployed address for exactly that amount. **The approval is the go-live switch** — no Safe module involved, and revoking the allowance shuts claims down.
+3. The Safe funds the pool: wrap `totalSeeded()` into WETH (`deposit`), then `approve` the deployed address for exactly that amount. **The approval is the go-live switch** — no Safe module involved, and revoking the allowance shuts claims down. The admin console's pool-funding panel tracks both steps live and prints the exact `to`/`value`/`data` to run from the Safe UI (it only sends them itself when the connected wallet *is* the Safe, or on the local fork).
 4. Record the deployed address and its deploy block for the next step.
 
 > Values are pro-rated: 7.5 ETH of the 17.32 ETH mint proceeds was spent, so every token redeems ~56.7% of its mint price and the seeded total (~9.8238 WETH) is fully covered by the approved allowance — every claim is payable, first to last. Claims stay open until `closesAt`; after that the Safe revokes the WETH allowance — unclaimed value never left the Safe.

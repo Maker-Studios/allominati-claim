@@ -8,8 +8,8 @@ import {
   useReadContract,
   useWriteContract,
 } from "wagmi";
-import { createWalletClient, formatEther, http, type Hex } from "viem";
-import { dualClaimAbi, nftAbi } from "./abi";
+import { createWalletClient, formatEther, http, isAddress, type Address, type Hex } from "viem";
+import { dualClaimAbi, nftAbi, wethAbi } from "./abi";
 import { CLAIM_ADDRESS, FORK_RPC_URL, NFT_ADDRESS } from "./addresses";
 import { activeChain } from "./wagmi";
 import { useImpersonation } from "./impersonation";
@@ -198,7 +198,10 @@ export function useAdminActions() {
   const [pending, setPending] = useState(false);
 
   const run = useCallback(
-    async (functionName: "registerProject" | "setProjectActive", args: readonly unknown[]) => {
+    async (
+      functionName: "registerProject" | "setProjectActive" | "setTreasury",
+      args: readonly unknown[],
+    ) => {
       setPending(true);
       try {
         let hash: Hex;
@@ -238,7 +241,171 @@ export function useAdminActions() {
     registerProject: (name: string, tag: string, description: string, payout: string) =>
       run("registerProject", [name, tag, description, payout]),
     setProjectActive: (projectId: bigint, active: boolean) => run("setProjectActive", [projectId, active]),
+    /** Repoint claims at a different funding Safe — it must re-approve from scratch. */
+    setTreasury: (treasury: Address) => run("setTreasury", [treasury]),
   };
+}
+
+/**
+ * Funding state of the pool. The contract holds nothing — claims pull WETH
+ * out of the Safe with transferFrom — so `available()` (the Safe's balance
+ * capped by its allowance) has to reach `totalSeeded()`, the value every
+ * unredeemed token is still owed, for the claims to be payable first to last.
+ */
+export interface TreasuryStatus {
+  treasury: Address;
+  token: Address; // WETH
+  outstandingWei: bigint; // totalSeeded()
+  allowanceWei: bigint;
+  wethWei: bigint; // Safe WETH balance
+  ethWei: bigint; // Safe ETH balance — what's left to wrap with
+  availableWei: bigint; // available(): min(wethWei, allowanceWei)
+  /** ETH still to wrap; `deposit` adds to the balance, so this is a delta */
+  wrapWei: bigint;
+  /** `approve` overwrites the allowance, so the tx always targets outstandingWei */
+  needsApproval: boolean;
+  /** every unredeemed token is payable right now */
+  funded: boolean;
+}
+
+export function useTreasuryStatus() {
+  const client = usePublicClient();
+  return useQuery({
+    queryKey: ["treasuryStatus", CLAIM_ADDRESS],
+    enabled: Boolean(client && CLAIM_ADDRESS),
+    refetchInterval: 12_000,
+    queryFn: async (): Promise<TreasuryStatus> => {
+      const read = <T,>(functionName: string) =>
+        client!.readContract({
+          address: CLAIM_ADDRESS,
+          abi: dualClaimAbi,
+          functionName,
+        } as Parameters<NonNullable<typeof client>["readContract"]>[0]) as Promise<T>;
+
+      const [token, treasury, outstandingWei, availableWei] = await Promise.all([
+        read<Address>("token"),
+        read<Address>("treasury"),
+        read<bigint>("totalSeeded"),
+        read<bigint>("available"),
+      ]);
+      const [allowanceWei, wethWei, ethWei] = await Promise.all([
+        client!.readContract({
+          address: token,
+          abi: wethAbi,
+          functionName: "allowance",
+          args: [treasury, CLAIM_ADDRESS],
+        }),
+        client!.readContract({ address: token, abi: wethAbi, functionName: "balanceOf", args: [treasury] }),
+        client!.getBalance({ address: treasury }),
+      ]);
+
+      return {
+        treasury,
+        token,
+        outstandingWei,
+        allowanceWei,
+        wethWei,
+        ethWei,
+        availableWei,
+        wrapWei: wethWei < outstandingWei ? outstandingWei - wethWei : 0n,
+        needsApproval: allowanceWei < outstandingWei,
+        funded: outstandingWei > 0n && availableWei >= outstandingWei,
+      };
+    },
+  });
+}
+
+export type TreasuryAction = "wrap" | "approve" | "revoke";
+
+/**
+ * Wrap / approve / revoke, all of which must be sent **by the Safe itself**.
+ * That only works from here when the connected wallet is the treasury (the
+ * Safe reaching the dApp over WalletConnect), or on the fork, where anvil
+ * executes unsigned transactions for any account. Otherwise `canSend` is
+ * false and the panel falls back to calldata for the Safe to run.
+ */
+export function useTreasuryActions(treasury?: Address, token?: Address) {
+  const client = usePublicClient();
+  const { address } = useAccount();
+  const { writeContractAsync } = useWriteContract();
+  const queryClient = useQueryClient();
+  const { account: impersonated } = useImpersonation();
+  const [pending, setPending] = useState<TreasuryAction | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const isTreasury = Boolean(address && treasury && address.toLowerCase() === treasury.toLowerCase());
+  const canSend = Boolean(token && treasury) && (Boolean(impersonated) || isTreasury);
+
+  const run = useCallback(
+    async (action: TreasuryAction, amount: bigint) => {
+      setPending(action);
+      setError(null);
+      try {
+        const tx =
+          action === "wrap"
+            ? { address: token!, abi: wethAbi, functionName: "deposit", value: amount }
+            : { address: token!, abi: wethAbi, functionName: "approve", args: [CLAIM_ADDRESS, amount] };
+        let hash: Hex;
+        if (impersonated) {
+          const wallet = createWalletClient({
+            account: treasury!,
+            chain: activeChain,
+            transport: http(FORK_RPC_URL),
+          });
+          hash = await wallet.writeContract(tx as Parameters<typeof wallet.writeContract>[0]);
+        } else {
+          hash = await writeContractAsync(tx as Parameters<typeof writeContractAsync>[0]);
+        }
+        const receipt = await client!.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") throw new Error("Transaction reverted on-chain.");
+        await queryClient.invalidateQueries();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg.split("\n")[0].slice(0, 200));
+      } finally {
+        setPending(null);
+      }
+    },
+    [client, impersonated, queryClient, token, treasury, writeContractAsync],
+  );
+
+  return {
+    canSend,
+    isTreasury,
+    pending,
+    error,
+    clearError: () => setError(null),
+    wrap: (amount: bigint) => run("wrap", amount),
+    /** absolute, not a delta — approve overwrites whatever is there */
+    approve: (amount: bigint) => run("approve", amount),
+    revoke: () => run("revoke", 0n),
+  };
+}
+
+/**
+ * What a candidate treasury already holds and has approved — shown before
+ * repointing, since `setTreasury` does not carry the old allowance over.
+ */
+export function useTreasuryPreview(candidate: string, token?: Address) {
+  const client = usePublicClient();
+  return useQuery({
+    queryKey: ["treasuryPreview", candidate.toLowerCase(), token],
+    enabled: Boolean(client && token) && isAddress(candidate),
+    staleTime: 15_000,
+    queryFn: async () => {
+      const account = candidate as Address;
+      const [wethWei, allowanceWei] = await Promise.all([
+        client!.readContract({ address: token!, abi: wethAbi, functionName: "balanceOf", args: [account] }),
+        client!.readContract({
+          address: token!,
+          abi: wethAbi,
+          functionName: "allowance",
+          args: [account, CLAIM_ADDRESS],
+        }),
+      ]);
+      return { wethWei, allowanceWei };
+    },
+  });
 }
 
 export type ClaimStatus = "idle" | "wallet" | "pending" | "success" | "error";

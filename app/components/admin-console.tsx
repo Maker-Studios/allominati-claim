@@ -7,6 +7,7 @@ import {
   riskLabel,
   shortAddress,
 } from "../lib/dual-claim";
+import TreasuryPanel from "./treasury-panel";
 
 const RISKS: Risk[] = ["low", "medium", "high"];
 
@@ -55,9 +56,15 @@ export default function AdminConsole({
           ← EXIT
         </button>
       </div>
-      <h1 className="mt-3.5 mb-1.5 text-[34px] font-semibold tracking-[-1px]">
-        Listed projects
+      <h1 className="mt-3.5 mb-[26px] text-[34px] font-semibold tracking-[-1px]">
+        Console
       </h1>
+
+      <TreasuryPanel />
+
+      <h2 className="mb-1.5 text-[22px] font-semibold tracking-[-0.5px]">
+        Listed projects
+      </h2>
       <p className="mb-[30px] text-[15px] text-muted">
         Holders can route redeemed value into anything listed here. Every
         change is an on-chain transaction and appears in the claim flow once
