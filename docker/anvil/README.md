@@ -23,33 +23,32 @@ demo frontend can be used without a local node.
 
 ## Point the app at it
 
-The app and setup script currently hardcode `http://127.0.0.1:8545`. Make
-the URL env-driven (falls back to localhost for local dev):
+Both the app and the setup script are already env-driven, each defaulting to
+`http://127.0.0.1:8545`:
 
-- `app/lib/onchain/wagmi.ts` and `app/lib/onchain/hooks.ts` (2 call sites):
+- the app reads `NEXT_PUBLIC_FORK_RPC_URL` (`app/lib/onchain/addresses.ts`,
+  consumed by `wagmi.ts`, `hooks.ts`, and the send-off route) — note this is a
+  *different* variable from `NEXT_PUBLIC_RPC_URL`, which is only used when
+  `NEXT_PUBLIC_CHAIN=mainnet`;
+- `scripts/setup-anvil.ts` and `scripts/e2e-claim.ts` read `RPC_URL`.
 
-  ```ts
-  const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "http://127.0.0.1:8545";
-  // ... http(RPC_URL)
-  ```
-
-- `scripts/setup-anvil.ts`:
-
-  ```ts
-  const RPC = process.env.RPC_URL ?? "http://127.0.0.1:8545";
-  ```
-
-Then bootstrap the hosted fork once from your machine:
+Bootstrap the hosted fork once from your machine:
 
 ```sh
 npm run forge:build && npm run derive
 RPC_URL=https://<service>.up.railway.app npm run anvil:setup
 ```
 
-and set `NEXT_PUBLIC_RPC_URL=https://<service>.up.railway.app` (plus the
-`NEXT_PUBLIC_CLAIM_ADDRESS` value the setup script prints, and optionally
-`NEXT_PUBLIC_IMPERSONATE` to demo without a wallet) wherever the frontend
-is deployed.
+Passing `RPC_URL` also makes the script write `NEXT_PUBLIC_FORK_RPC_URL` into
+your local `.env.local` — handy for pointing local dev at the hosted fork, but
+remember to clear it when you go back to local anvil, or the app and `npm run
+e2e` will keep talking to Railway.
+
+Wherever the frontend is deployed, build it with `NEXT_PUBLIC_CHAIN=local`,
+`NEXT_PUBLIC_FORK_RPC_URL=https://<service>.up.railway.app`, and the
+`NEXT_PUBLIC_CLAIM_ADDRESS` + `NEXT_PUBLIC_CLAIM_DEPLOY_BLOCK` values the setup
+script prints (optionally `NEXT_PUBLIC_IMPERSONATE` to demo without a wallet).
+These are inlined at build time, so changing them needs a rebuild.
 
 ## Caveats
 
