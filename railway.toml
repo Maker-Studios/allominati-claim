@@ -1,0 +1,9 @@
+# Railway service config for the hosted anvil fork.
+# See docker/anvil/README.md for deploy steps.
+
+# [build]
+# builder = "dockerfile"
+# dockerfilePath = "docker/anvil/Dockerfile"
+
+[deploy]
+restartPolicyType = "ALWAYS"

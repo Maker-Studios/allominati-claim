@@ -5,22 +5,41 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "forge:build": "forge build --root contracts",
+    "forge:test": "forge test --root contracts --fork-url ${ETH_RPC_URL:-https://ethereum-rpc.publicnode.com} -vvv",
+    "anvil": "anvil --fork-url ${ETH_RPC_URL:-https://ethereum-rpc.publicnode.com} --auto-impersonate --chain-id 31337",
+    "derive": "tsx scripts/derive-values.ts",
+    "anvil:setup": "tsx scripts/setup-anvil.ts",
+    "e2e": "tsx scripts/e2e-claim.ts"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@tanstack/react-query": "^5.101.2",
+    "connectkit": "^1.9.2",
     "next": "16.2.10",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "viem": "^2.54.6",
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "playwright-core": "^1.61.1",
+    "prisma": "^7.8.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.0",
     "typescript": "^5"
   }
 }
