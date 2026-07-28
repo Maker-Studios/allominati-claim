@@ -1,0 +1,26 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// A holder's signed farewell message from the send-off screen.
+model SendoffMessage {
+  id        Int      @id @default(autoincrement())
+  address   String
+  message   String
+  /// EIP-191 signature over the canonical send-off payload. Required and
+  /// verified on write since 2026-07-14; null only on rows that predate that.
+  signature String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("sendoff_messages")
+}
